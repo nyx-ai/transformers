@@ -1192,14 +1192,18 @@ overwrite_call_docstring(FlaxCLIPModel, CLIP_INPUTS_DOCSTRING + FLAX_CLIP_MODEL_
 append_replace_return_docstrings(FlaxCLIPModel, output_type=FlaxCLIPOutput, config_class=CLIPConfig)
 
 
-
 class FlaxCLIPTextModuleWithProjection(nn.Module):
     config: CLIPTextConfig
     dtype: jnp.dtype = jnp.float32
 
     def setup(self):
         self.text_model = FlaxCLIPTextTransformer(self.config, dtype=self.dtype)
-        self.text_projection = nn.Dense(self.config.projection_dim, dtype=self.dtype, kernel_init=nn.initializers.xavier_uniform(), use_bias=False)
+        self.text_projection = nn.Dense(
+            self.config.projection_dim,
+            dtype=self.dtype,
+            kernel_init=jax.nn.initializers.normal(0.02),
+            use_bias=False
+        )
 
     def __call__(
         self,
