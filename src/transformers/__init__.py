@@ -3907,6 +3907,7 @@ else:
             "FlaxCLIPTextPreTrainedModel",
             "FlaxCLIPVisionModel",
             "FlaxCLIPVisionPreTrainedModel",
+            "FlaxCLIPTextModelWithProjection",
         ]
     )
     _import_structure["models.distilbert"].extend(
@@ -7290,6 +7291,7 @@ if TYPE_CHECKING:
             FlaxCLIPTextPreTrainedModel,
             FlaxCLIPVisionModel,
             FlaxCLIPVisionPreTrainedModel,
+            FlaxCLIPTextModelWithProjection,
         )
         from .models.distilbert import (
             FlaxDistilBertForMaskedLM,

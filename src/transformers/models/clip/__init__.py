@@ -96,6 +96,7 @@ else:
         "FlaxCLIPTextPreTrainedModel",
         "FlaxCLIPVisionModel",
         "FlaxCLIPVisionPreTrainedModel",
+        "FlaxCLIPTextModelWithProjection",
     ]
 
 
@@ -170,6 +171,7 @@ if TYPE_CHECKING:
             FlaxCLIPTextPreTrainedModel,
             FlaxCLIPVisionModel,
             FlaxCLIPVisionPreTrainedModel,
+            FlaxCLIPTextModelWithProjection,
         )
 
 

@@ -1190,3 +1190,49 @@ FLAX_CLIP_MODEL_DOCSTRING = """
 
 overwrite_call_docstring(FlaxCLIPModel, CLIP_INPUTS_DOCSTRING + FLAX_CLIP_MODEL_DOCSTRING)
 append_replace_return_docstrings(FlaxCLIPModel, output_type=FlaxCLIPOutput, config_class=CLIPConfig)
+
+
+
+class FlaxCLIPTextModuleWithProjection(nn.Module):
+    config: CLIPTextConfig
+    dtype: jnp.dtype = jnp.float32
+
+    def setup(self):
+        self.text_model = FlaxCLIPTextTransformer(self.config, dtype=self.dtype)
+        self.text_projection = nn.Dense(self.config.projection_dim, dtype=self.dtype, kernel_init=nn.initializers.xavier_uniform(), use_bias=False)
+
+    def __call__(
+        self,
+        input_ids,
+        attention_mask,
+        position_ids,
+        deterministic: bool = True,
+        output_attentions: Optional[bool] = None,
+        output_hidden_states: Optional[bool] = None,
+        return_dict: Optional[bool] = None,
+    ):
+        text_outputs = self.text_model(
+            input_ids,
+            attention_mask,
+            position_ids,
+            deterministic,
+            output_attentions,
+            output_hidden_states,
+            return_dict,
+        )
+        pooled_output = text_outputs[1]
+        text_embeds = self.text_projection(pooled_output)
+
+        if not return_dict:
+            return (text_embeds, text_outputs[0]) + text_outputs[2:]
+
+        return FlaxBaseModelOutputWithPooling(
+            last_hidden_state=text_outputs.last_hidden_state,
+            pooler_output=text_embeds,
+            hidden_states=text_outputs.hidden_states,
+            attentions=text_outputs.attentions,
+        )
+
+
+class FlaxCLIPTextModelWithProjection(FlaxCLIPTextPreTrainedModel):
+    module_class = FlaxCLIPTextModuleWithProjection
