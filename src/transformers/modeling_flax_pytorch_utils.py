@@ -16,7 +16,8 @@
 
 import os
 from pickle import UnpicklingError
-from typing import Dict, Tuple
+from typing import Dict, Tuple, Union, Optional
+import json
 
 import jax
 import jax.numpy as jnp
@@ -36,15 +37,44 @@ if is_torch_available():
 if is_safetensors_available():
     from safetensors import safe_open
     from safetensors.flax import load_file as safe_load_file
+    from safetensors.torch import load_file as torch_safe_load_file
 
 
 logger = logging.get_logger(__name__)
+SAFETENSORS_FILE_EXTENSION = "safetensors"
 
 
 #####################
 # PyTorch => Flax #
 #####################
-
+def load_state_dict(checkpoint_file: Union[str, os.PathLike], variant: Optional[str] = None):
+    """
+    Reads a checkpoint file, returning properly formatted errors if they arise.
+    """
+    try:
+        file_extension = os.path.basename(checkpoint_file).split(".")[-1]
+        if file_extension == SAFETENSORS_FILE_EXTENSION:
+            return torch_safe_load_file(checkpoint_file, device="cpu")
+        else:
+            return torch.load(checkpoint_file, map_location="cpu")
+    except Exception as e:
+        try:
+            with open(checkpoint_file) as f:
+                if f.read().startswith("version"):
+                    raise OSError(
+                        "You seem to have cloned a repository without having git-lfs installed. Please install "
+                        "git-lfs and run `git lfs install` followed by `git lfs pull` in the folder "
+                        "you cloned."
+                    )
+                else:
+                    raise ValueError(
+                        f"Unable to locate the file {checkpoint_file} which is necessary to load this pretrained "
+                        "model. Make sure you have saved the model properly."
+                    ) from e
+        except (UnicodeDecodeError, ValueError):
+            raise OSError(
+                f"Unable to load weights from checkpoint file for '{checkpoint_file}' " f"at '{checkpoint_file}'. "
+            )
 
 def load_pytorch_checkpoint_in_flax_state_dict(
     flax_model, pytorch_checkpoint_path, is_sharded, allow_missing_keys=False
@@ -60,6 +90,12 @@ def load_pytorch_checkpoint_in_flax_state_dict(
             with safe_open(pt_path, framework="flax") as f:
                 for k in f.keys():
                     pt_state_dict[k] = f.get_tensor(k)
+        elif pt_path.endswith("model.safetensors.index.json"):
+            index = json.load(open(pt_path))
+            pt_state_dict = {}
+            for filename in set(index['weight_map'].values()):
+                sd = load_state_dict(os.path.join(os.path.dirname(pt_path), filename))
+                pt_state_dict = {**pt_state_dict, **sd}
         else:
             try:
                 import torch  # noqa: F401

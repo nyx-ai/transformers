@@ -63,6 +63,7 @@ if is_safetensors_available():
     from safetensors import safe_open
     from safetensors.flax import load_file as safe_load_file
     from safetensors.flax import save_file as safe_save_file
+    from safetensors.numpy import load_file as np_safe_load_file
 
 logger = logging.get_logger(__name__)
 
@@ -478,30 +479,36 @@ class FlaxPreTrainedModel(PushToHubMixin, FlaxGenerationMixin):
         state_sharded_dict = {}
 
         for shard_file in shard_files:
-            # load using msgpack utils
-            try:
-                with open(shard_file, "rb") as state_f:
-                    state = from_bytes(cls, state_f.read())
-            except (UnpicklingError, msgpack.exceptions.ExtraData) as e:
-                with open(shard_file) as f:
-                    if f.read().startswith("version"):
-                        raise OSError(
-                            "You seem to have cloned a repository without having git-lfs installed. Please"
-                            " install git-lfs and run `git lfs install` followed by `git lfs pull` in the"
-                            " folder you cloned."
-                        )
-                    else:
-                        raise ValueError from e
-            except (UnicodeDecodeError, ValueError):
-                raise EnvironmentError(f"Unable to convert {shard_file} to Flax deserializable object. ")
+            if shard_file.endswith('.safetensors'):
+                shard = np_safe_load_file(shard_file)
+                state_sharded_dict.update(shard)
+                sep = '.'
+            else:
+                # load using msgpack utils
+                try:
+                    with open(shard_file, "rb") as state_f:
+                        state = from_bytes(cls, state_f.read())
+                except (UnpicklingError, msgpack.exceptions.ExtraData) as e:
+                    with open(shard_file) as f:
+                        if f.read().startswith("version"):
+                            raise OSError(
+                                "You seem to have cloned a repository without having git-lfs installed. Please"
+                                " install git-lfs and run `git lfs install` followed by `git lfs pull` in the"
+                                " folder you cloned."
+                            )
+                        else:
+                            raise ValueError from e
+                except (UnicodeDecodeError, ValueError):
+                    raise EnvironmentError(f"Unable to convert {shard_file} to Flax deserializable object. ")
 
-            state = flatten_dict(state, sep="/")
-            state_sharded_dict.update(state)
-            del state
-            gc.collect()
+                state = flatten_dict(state, sep="/")
+                state_sharded_dict.update(state)
+                del state
+                gc.collect()
+                sep = '/'
 
         # the state dict is unflattened to the match the format of model.params
-        return unflatten_dict(state_sharded_dict, sep="/")
+        return unflatten_dict(state_sharded_dict, sep=sep)
 
     @classmethod
     def can_generate(cls) -> bool:
@@ -748,7 +755,7 @@ class FlaxPreTrainedModel(PushToHubMixin, FlaxGenerationMixin):
                     # Load from a sharded safetensors checkpoint
                     archive_file = os.path.join(pretrained_model_name_or_path, SAFE_WEIGHTS_INDEX_NAME)
                     is_sharded = True
-                    raise NotImplementedError("Support for sharded checkpoints using safetensors is coming soon!")
+                    # raise NotImplementedError("Support for sharded checkpoints using safetensors is coming soon!")
                 elif os.path.isfile(os.path.join(pretrained_model_name_or_path, subfolder, WEIGHTS_NAME)):
                     raise EnvironmentError(
                         f"Error no file named {FLAX_WEIGHTS_NAME} found in directory {pretrained_model_name_or_path} "
@@ -768,7 +775,8 @@ class FlaxPreTrainedModel(PushToHubMixin, FlaxGenerationMixin):
                 resolved_archive_file = download_url(pretrained_model_name_or_path)
             else:
                 if from_pt:
-                    filename = WEIGHTS_NAME
+                    # filename = WEIGHTS_NAME
+                    filename = SAFE_WEIGHTS_INDEX_NAME
                 else:
                     filename = FLAX_WEIGHTS_NAME
 
@@ -913,7 +921,9 @@ class FlaxPreTrainedModel(PushToHubMixin, FlaxGenerationMixin):
             # NOTE: This is to prevent a bug this will be fixed in Flax >= v0.3.4:
             # https://github.com/google/flax/issues/1261
             if _do_init:
-                state = jax.tree_util.tree_map(jnp.array, state)
+                # state = jax.tree_util.tree_map(jnp.array, state)
+                cpu_device = jax.devices('cpu')[0]
+                state = jax.device_put(state, cpu_device)
             else:
                 # keep the params on CPU if we don't want to initialize
                 state = jax.tree_util.tree_map(lambda x: jax.device_put(x, jax.local_devices(backend="cpu")[0]), state)
@@ -1048,13 +1058,13 @@ class FlaxPreTrainedModel(PushToHubMixin, FlaxGenerationMixin):
                 "See [`~FlaxPreTrainedModel.to_fp32`] for further information on how to do this."
             )
 
-        if len(bf16_params) > 0:
-            logger.warning(
-                f"Some of the weights of {model.__class__.__name__} were initialized in bfloat16 precision from "
-                f"the model checkpoint at {pretrained_model_name_or_path}:\n{bf16_params}\n"
-                "You should probably UPCAST the model weights to float32 if this was not intended. "
-                "See [`~FlaxPreTrainedModel.to_fp32`] for further information on how to do this."
-            )
+        # if len(bf16_params) > 0:
+        #     logger.warning(
+        #         f"Some of the weights of {model.__class__.__name__} were initialized in bfloat16 precision from "
+        #         f"the model checkpoint at {pretrained_model_name_or_path}:\n{bf16_params}\n"
+        #         "You should probably UPCAST the model weights to float32 if this was not intended. "
+        #         "See [`~FlaxPreTrainedModel.to_fp32`] for further information on how to do this."
+        #     )
 
         # If it is a model with generation capabilities, attempt to load the generation config
         if model.can_generate():
