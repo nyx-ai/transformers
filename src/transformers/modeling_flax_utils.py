@@ -436,7 +436,7 @@ class FlaxPreTrainedModel(PushToHubMixin, FlaxGenerationMixin):
     def load_flax_weights(cls, resolved_archive_file):
         try:
             if resolved_archive_file.endswith(".safetensors"):
-                state = safe_load_file(resolved_archive_file)
+                state = np_safe_load_file(resolved_archive_file)
                 state = unflatten_dict(state, sep=".")
             else:
                 with open(resolved_archive_file, "rb") as state_f:
@@ -900,12 +900,12 @@ class FlaxPreTrainedModel(PushToHubMixin, FlaxGenerationMixin):
         if filename == SAFE_WEIGHTS_NAME:
             with safe_open(resolved_archive_file, framework="flax") as f:
                 safetensors_metadata = f.metadata()
-            if safetensors_metadata is None or safetensors_metadata.get("format") not in ["pt", "tf", "flax"]:
-                raise OSError(
-                    f"The safetensors archive passed at {resolved_archive_file} does not contain the valid metadata."
-                    " Make sure you save your model with the `save_pretrained` method."
-                )
-            safetensors_from_pt = safetensors_metadata.get("format") == "pt"
+            # if safetensors_metadata is None or safetensors_metadata.get("format") not in ["pt", "tf", "flax"]:
+            #     raise OSError(
+            #         f"The safetensors archive passed at {resolved_archive_file} does not contain the valid metadata."
+            #         " Make sure you save your model with the `save_pretrained` method."
+            #     )
+            safetensors_from_pt = safetensors_metadata is not None and safetensors_metadata.get("format") == "pt"
 
         # init random models
         model = cls(config, *model_args, _do_init=_do_init, **model_kwargs)
